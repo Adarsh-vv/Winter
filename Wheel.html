@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spinning Wheel</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        canvas {
+            border: 2px solid black;
+        }
+        #result {
+            margin-top: 20px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        #backButton {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            background-color: #0088cc;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #backButton:hover {
+            background-color: #006699;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="wheel" width="400" height="400"></canvas>
+    <div id="result"></div>
+    <button id="backButton" style="display: none;">Close</button>
+
+    <script>
+        const canvas = document.getElementById("wheel");
+        const ctx = canvas.getContext("2d");
+        const segments = [
+            { label: "Blue 2x", color: "#0000FF", multiplier: 2 },
+            { label: "Red 2x", color: "#FF0000", multiplier: 2 },
+            { label: "Gold 10x 🏆", color: "#FFD700", multiplier: 10 }
+        ];
+        const numSegments = segments.length;
+        const segmentAngle = (2 * Math.PI) / numSegments;
+        const radius = 150;
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        let currentAngle = 0;
+        let spinning = false;
+        let spinResult = null;
+
+        // Get user's choice from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const userChoice = urlParams.get("choice") || "blue"; // Default to blue if not specified
+
+        // Draw the wheel
+        function drawWheel() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw segments
+            for (let i = 0; i < numSegments; i++) {
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, i * segmentAngle, (i + 1) * segmentAngle);
+                ctx.fillStyle = segments[i].color;
+                ctx.fill();
+                ctx.strokeStyle = "black";
+                ctx.stroke();
+
+                // Draw text
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.rotate(i * segmentAngle + segmentAngle / 2);
+                ctx.fillStyle = "black";
+                ctx.font = "16px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText(segments[i].label, 0, -radius + 20);
+                ctx.restore();
+            }
+
+            // Draw arrow
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(currentAngle);
+            ctx.beginPath();
+            ctx.moveTo(0, -radius - 20);
+            ctx.lineTo(-10, -radius);
+            ctx.lineTo(10, -radius);
+            ctx.closePath();
+            ctx.fillStyle = "black";
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Spin the wheel
+        function spinWheel() {
+            if (spinning) return;
+            spinning = true;
+            document.getElementById("result").textContent = "Spinning...";
+
+            // Determine the outcome randomly
+            const outcomes = ["blue", "red", "gold"];
+            spinResult = outcomes[Math.floor(Math.random() * outcomes.length)];
+
+            // Calculate spins and final angle
+            const spins = 5 + Math.random() * 5; // Random spins between 5 and 10
+            const targetSegment = outcomes.indexOf(spinResult);
+            const targetAngle = targetSegment * segmentAngle + Math.random() * segmentAngle;
+            const totalAngle = spins * 2 * Math.PI + targetAngle;
+
+            let startTime = null;
+            const duration = 3000; // Spin for 3 seconds
+
+            function animate(time) {
+                if (!startTime) startTime = time;
+                const elapsed = time - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                // Ease out animation
+                const easedProgress = 1 - Math.pow(1 - progress, 3);
+                currentAngle = easedProgress * totalAngle;
+
+                drawWheel();
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    spinning = false;
+                    showResult();
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Show the result and send to bot
+        function showResult() {
+            const win = userChoice.toLowerCase() === spinResult;
+            let message;
+            let winAmount = 0;
+            if (win) {
+                const segment = segments.find(s => s.label.toLowerCase().includes(spinResult));
+                winAmount = 5 * segment.multiplier; // Bet is 5
+                message = `🎉 You won! The wheel landed on ${segments.find(s => s.label.toLowerCase().includes(spinResult)).label}. You won ${winAmount} points!`;
+            } else {
+                message = `❌ You lost! The wheel landed on ${segments.find(s => s.label.toLowerCase().includes(spinResult)).label}.`;
+            }
+            document.getElementById("result").textContent = message;
+
+            // Send result to the bot using Telegram WebApp API
+            Telegram.WebApp.sendData(JSON.stringify({ outcome: spinResult, winAmount: winAmount }));
+
+            // Show close button
+            const backButton = document.getElementById("backButton");
+            backButton.style.display = "block";
+            backButton.onclick = () => {
+                Telegram.WebApp.close();
+            };
+        }
+
+        // Expand the Web App to full screen
+        Telegram.WebApp.expand();
+
+        // Initial draw and start spin
+        drawWheel();
+        spinWheel();
+    </script>
+</body>
+</html>
